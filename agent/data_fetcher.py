@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_crypto(symbol: str, timeframe: str, limit: int = 150) -> pd.DataFrame | None:
     try:
-        exchange = ccxt.binance()
+        exchange = ccxt.bybit()
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
         df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)

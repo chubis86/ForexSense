@@ -24,10 +24,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ASSETS = [
-    {"name": "BTC/USDT", "source": "crypto", "symbol": "BTC/USDT"},
-    {"name": "ETH/USDT", "source": "crypto", "symbol": "ETH/USDT"},
-    {"name": "XAU/USD",  "source": "tradfi",  "ticker": "GC=F"},
-    {"name": "EUR/USD",  "source": "tradfi",  "ticker": "EURUSD=X"},
+    {"name": "BTC/USD",  "source": "crypto", "ticker": "BTC-USD"},
+    {"name": "ETH/USD",  "source": "crypto", "ticker": "ETH-USD"},
+    {"name": "XAU/USD",  "source": "tradfi", "ticker": "GC=F"},
+    {"name": "EUR/USD",  "source": "tradfi", "ticker": "EURUSD=X"},
 ]
 
 
@@ -46,8 +46,8 @@ def process_asset(asset: dict) -> None:
     try:
         # 1. Fetch data
         if asset["source"] == "crypto":
-            df_1h = fetch_crypto(asset["symbol"], "1h")
-            df_4h = fetch_crypto(asset["symbol"], "4h")
+            df_1h = fetch_crypto(asset["ticker"], "1h")
+            df_4h = fetch_crypto(asset["ticker"], "4h")
         else:
             df_1h = fetch_tradfi(asset["ticker"], "1h")
             df_4h = fetch_tradfi(asset["ticker"], "4h")

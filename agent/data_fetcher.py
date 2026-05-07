@@ -8,16 +8,9 @@ import yfinance as yf
 logger = logging.getLogger(__name__)
 
 
-def fetch_crypto(symbol: str, timeframe: str, limit: int = 150) -> pd.DataFrame | None:
-    try:
-        exchange = ccxt.bybit()
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-        return df.sort_values("timestamp").reset_index(drop=True)
-    except Exception as e:
-        logger.error(f"Error fetching crypto {symbol} {timeframe}: {e}")
-        return None
+def fetch_crypto(ticker: str, timeframe: str, limit: int = 150) -> pd.DataFrame | None:
+    """Fetch crypto OHLCV via yfinance (e.g. BTC-USD, ETH-USD). No geo restrictions."""
+    return fetch_tradfi(ticker, timeframe, limit=limit, is_crypto=True)
 
 
 def _resample_to_4h(df_1h: pd.DataFrame) -> pd.DataFrame:
@@ -32,7 +25,7 @@ def _resample_to_4h(df_1h: pd.DataFrame) -> pd.DataFrame:
     return df_4h.reset_index()
 
 
-def fetch_tradfi(ticker: str, timeframe: str, limit: int = 150) -> pd.DataFrame | None:
+def fetch_tradfi(ticker: str, timeframe: str, limit: int = 150, is_crypto: bool = False) -> pd.DataFrame | None:
     try:
         ticker_obj = yf.Ticker(ticker)
         raw = ticker_obj.history(period="30d", interval="1h", auto_adjust=True)
@@ -54,11 +47,12 @@ def fetch_tradfi(ticker: str, timeframe: str, limit: int = 150) -> pd.DataFrame 
         df = raw[["timestamp", "open", "high", "low", "close", "volume"]].copy()
         df = df.sort_values("timestamp").tail(limit).reset_index(drop=True)
 
-        # Detect closed market: last candle older than 2 hours
-        last_candle_age = datetime.now(timezone.utc) - df["timestamp"].iloc[-1].to_pydatetime()
-        if last_candle_age > timedelta(hours=2):
-            logger.info(f"{ticker}: mercado cerrado (último candle hace {last_candle_age})")
-            return None
+        # Detect closed market: last candle older than 2 hours (skip for crypto — 24/7)
+        if not is_crypto:
+            last_candle_age = datetime.now(timezone.utc) - df["timestamp"].iloc[-1].to_pydatetime()
+            if last_candle_age > timedelta(hours=2):
+                logger.info(f"{ticker}: mercado cerrado (último candle hace {last_candle_age})")
+                return None
 
         if timeframe == "4h":
             df = _resample_to_4h(df)

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 from datetime import datetime, timezone
@@ -69,27 +68,31 @@ def format_message(signal_data: dict) -> str:
         }.get(session, session)
         lines.append(f"🕐 Sesión: {session_label}")
 
+    # Trade execution result
+    if "trade" in signal_data:
+        trade = signal_data["trade"]
+        if trade:
+            lines.append(f"📋 *Ejecutado:* `{trade['lots']} lots`")
+        else:
+            lines.append("⚠️ *Error al ejecutar operación*")
+
     lines.append(f"🤖 ForexSense • {now_utc}")
     return "\n".join(lines)
 
 
-async def _send_async(text: str) -> None:
-    bot = Bot(token=os.environ["TELEGRAM_BOT_TOKEN"])
-    await bot.send_message(
-        chat_id=os.environ["TELEGRAM_CHAT_ID"],
-        text=text,
-        parse_mode=ParseMode.MARKDOWN,
-    )
-
-
-def send_message(text: str) -> None:
+async def send_message(text: str) -> None:
     try:
-        asyncio.run(_send_async(text))
+        bot = Bot(token=os.environ["TELEGRAM_BOT_TOKEN"])
+        await bot.send_message(
+            chat_id=os.environ["TELEGRAM_CHAT_ID"],
+            text=text,
+            parse_mode=ParseMode.MARKDOWN,
+        )
     except Exception as e:
         logger.error(f"Error enviando mensaje a Telegram: {e}")
 
 
-def send_signal(signal_data: dict) -> None:
+async def send_signal(signal_data: dict) -> None:
     strength = signal_data.get("strength", "LOW")
     if strength not in ("HIGH", "MEDIUM"):
         logger.info(f"{signal_data['asset']}: señal de baja confianza ({strength}), omitida")
@@ -97,7 +100,7 @@ def send_signal(signal_data: dict) -> None:
 
     try:
         message = format_message(signal_data)
-        send_message(message)
+        await send_message(message)
         logger.info(f"{signal_data['asset']}: señal {signal_data['signal']} ({strength}) enviada a Telegram")
     except Exception as e:
         logger.error(f"Error procesando señal para Telegram: {e}")

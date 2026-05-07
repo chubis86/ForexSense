@@ -5,3 +5,4 @@ anthropic>=0.40.0
 python-telegram-bot>=21.0
 pandas>=2.0.0
 numpy>=1.26.0
+metaapi-cloud-sdk>=27.0.0

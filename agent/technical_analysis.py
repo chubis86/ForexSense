@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 
 import pandas as pd
-import pandas_ta as ta
+import ta as ta_lib
 
 logger = logging.getLogger(__name__)
 
@@ -16,31 +16,34 @@ def calculate_indicators_1h(df: pd.DataFrame) -> dict | None:
         logger.warning(f"Datos insuficientes: {len(df)} velas (mínimo 50)")
         return None
 
-    d = df.copy()
-    d.ta.rsi(length=14, append=True)
-    d.ta.macd(fast=12, slow=26, signal=9, append=True)
-    d.ta.bbands(length=20, std=2, append=True)
-    d.ta.ema(length=20, append=True)
-    d.ta.ema(length=50, append=True)
-    d = d.dropna()
+    close = df["close"]
 
-    if len(d) < 2:
+    rsi_series = ta_lib.momentum.RSIIndicator(close=close, window=14).rsi().dropna()
+    macd_obj = ta_lib.trend.MACD(close=close, window_slow=26, window_fast=12, window_sign=9)
+    macd_series = macd_obj.macd().dropna()
+    macd_signal_series = macd_obj.macd_signal().dropna()
+    macd_hist_series = macd_obj.macd_diff().dropna()
+    bb = ta_lib.volatility.BollingerBands(close=close, window=20, window_dev=2)
+    ema20_series = ta_lib.trend.EMAIndicator(close=close, window=20).ema_indicator().dropna()
+    ema50_series = ta_lib.trend.EMAIndicator(close=close, window=50).ema_indicator().dropna()
+
+    if any(len(s) < 2 for s in [rsi_series, macd_series, macd_signal_series, ema20_series, ema50_series]):
         logger.warning("Datos insuficientes tras calcular indicadores")
         return None
 
     return {
-        "rsi": float(d["RSI_14"].iloc[-1]),
-        "macd": float(d["MACD_12_26_9"].iloc[-1]),
-        "macd_signal": float(d["MACDs_12_26_9"].iloc[-1]),
-        "macd_hist": float(d["MACDh_12_26_9"].iloc[-1]),
-        "macd_prev": float(d["MACD_12_26_9"].iloc[-2]),
-        "macd_signal_prev": float(d["MACDs_12_26_9"].iloc[-2]),
-        "bb_lower": float(d["BBL_20_2.0"].iloc[-1]),
-        "bb_mid": float(d["BBM_20_2.0"].iloc[-1]),
-        "bb_upper": float(d["BBU_20_2.0"].iloc[-1]),
-        "ema20": float(d["EMA_20"].iloc[-1]),
-        "ema50": float(d["EMA_50"].iloc[-1]),
-        "close": float(d["close"].iloc[-1]),
+        "rsi": float(rsi_series.iloc[-1]),
+        "macd": float(macd_series.iloc[-1]),
+        "macd_signal": float(macd_signal_series.iloc[-1]),
+        "macd_hist": float(macd_hist_series.iloc[-1]),
+        "macd_prev": float(macd_series.iloc[-2]),
+        "macd_signal_prev": float(macd_signal_series.iloc[-2]),
+        "bb_lower": float(bb.bollinger_lband().iloc[-1]),
+        "bb_mid": float(bb.bollinger_mavg().iloc[-1]),
+        "bb_upper": float(bb.bollinger_hband().iloc[-1]),
+        "ema20": float(ema20_series.iloc[-1]),
+        "ema50": float(ema50_series.iloc[-1]),
+        "close": float(close.iloc[-1]),
     }
 
 
@@ -48,18 +51,17 @@ def get_4h_trend(df_4h: pd.DataFrame) -> str:
     if len(df_4h) < 50:
         return "NEUTRAL"
 
-    d = df_4h.copy()
-    d.ta.ema(length=20, append=True)
-    d.ta.ema(length=50, append=True)
-    d.ta.macd(fast=12, slow=26, signal=9, append=True)
-    d = d.dropna()
+    close = df_4h["close"]
+    ema20_s = ta_lib.trend.EMAIndicator(close=close, window=20).ema_indicator().dropna()
+    ema50_s = ta_lib.trend.EMAIndicator(close=close, window=50).ema_indicator().dropna()
+    macd_hist_s = ta_lib.trend.MACD(close=close, window_slow=26, window_fast=12, window_sign=9).macd_diff().dropna()
 
-    if len(d) < 1:
+    if any(len(s) < 1 for s in [ema20_s, ema50_s, macd_hist_s]):
         return "NEUTRAL"
 
-    ema20 = float(d["EMA_20"].iloc[-1])
-    ema50 = float(d["EMA_50"].iloc[-1])
-    macd_hist = float(d["MACDh_12_26_9"].iloc[-1])
+    ema20 = float(ema20_s.iloc[-1])
+    ema50 = float(ema50_s.iloc[-1])
+    macd_hist = float(macd_hist_s.iloc[-1])
 
     bullish = ema20 > ema50 and macd_hist > 0
     bearish = ema20 < ema50 and macd_hist < 0

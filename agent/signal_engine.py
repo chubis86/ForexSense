@@ -102,7 +102,19 @@ def query_claude(prompt: str) -> dict | None:
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
         )
+        if not response.content or response.content[0].type != "text":
+            logger.error("Respuesta Claude vacía o tipo inesperado")
+            return None
         raw = response.content[0].text.strip()
+        if not raw:
+            logger.error("Respuesta Claude vacía")
+            return None
+        # Strip markdown code block if present
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
         data = json.loads(raw)
         required = {"signal", "strength", "reasoning"}
         if not required.issubset(data.keys()):

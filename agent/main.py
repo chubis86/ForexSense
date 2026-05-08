@@ -18,7 +18,6 @@ from notifier import send_message, send_signal
 from trader import (
     DAILY_TARGET_PCT,
     SYMBOL_MAP,
-    connect,
     get_balance,
     get_daily_profit,
     has_open_position,
@@ -55,7 +54,7 @@ def validate_secrets() -> None:
         sys.exit(1)
 
 
-async def process_asset(asset: dict, conn, balance: float) -> None:
+async def process_asset(asset: dict, trading_enabled: bool, balance: float) -> None:
     name = asset["name"]
     logger.info(f"--- Procesando {name} ---")
 
@@ -139,12 +138,12 @@ async def process_asset(asset: dict, conn, balance: float) -> None:
 
         # 6. Execute trade
         symbol = SYMBOL_MAP.get(name)
-        if conn is not None and symbol:
-            already_open = await has_open_position(conn, symbol)
+        if trading_enabled and symbol:
+            already_open = await has_open_position(symbol)
             if already_open:
                 logger.info(f"{name}: ya hay una posición abierta, omitiendo")
                 return
-            trade_result = await open_trade(conn, symbol, signal, current_price, balance)
+            trade_result = await open_trade(symbol, signal, current_price, balance)
             result["trade"] = trade_result
         else:
             logger.warning(f"{name}: MetaAPI no disponible — señal sin ejecutar")
@@ -160,39 +159,33 @@ async def main() -> None:
     logger.info("=== ForexSense iniciando ===")
     validate_secrets()
 
-    # Connect to MetaAPI
-    api, conn = await connect()
+    # Get account state via MetaAPI REST
     balance = 0.0
+    trading_enabled = True
+    try:
+        balance = await get_balance()
+        daily_profit = await get_daily_profit()
+        daily_pct = (daily_profit / balance * 100) if balance > 0 else 0
+        logger.info(f"Balance: {balance:.2f} | P&L hoy: {daily_profit:+.2f} ({daily_pct:+.2f}%)")
 
-    if conn is not None:
-        try:
-            balance = await get_balance(conn)
-            daily_profit = await get_daily_profit(conn)
-            daily_pct = (daily_profit / balance * 100) if balance > 0 else 0
-            logger.info(f"Balance: {balance:.2f} | P&L hoy: {daily_profit:+.2f} ({daily_pct:+.2f}%)")
-
-            if daily_pct >= DAILY_TARGET_PCT * 100:
-                logger.info("Meta diaria del 2% alcanzada. Sin nuevas operaciones.")
-                await send_message(
-                    f"✅ *Meta diaria alcanzada*\n"
-                    f"Ganancia: `+{daily_pct:.2f}%` (`+{daily_profit:.2f} USD`)\n"
-                    f"No se abrirán más posiciones hoy."
-                )
-                if api:
-                    api.close()
-                return
-        except Exception as e:
-            logger.error(f"Error consultando MetaAPI: {e}")
-            conn = None
+        if daily_pct >= DAILY_TARGET_PCT * 100:
+            logger.info("Meta diaria del 2% alcanzada. Sin nuevas operaciones.")
+            await send_message(
+                f"✅ *Meta diaria alcanzada*\n"
+                f"Ganancia: `+{daily_pct:.2f}%` (`+{daily_profit:.2f} USD`)\n"
+                f"No se abrirán más posiciones hoy."
+            )
+            return
+    except Exception as e:
+        logger.error(f"Error consultando MetaAPI: {e}")
+        trading_enabled = False
 
     session = get_market_session()
     logger.info(f"Sesión de mercado actual: {session}")
 
     for asset in ASSETS:
-        await process_asset(asset, conn, balance)
+        await process_asset(asset, trading_enabled, balance)
 
-    if api:
-        api.close()
     logger.info("=== ForexSense completado ===")
 
 

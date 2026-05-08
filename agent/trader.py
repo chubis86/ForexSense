@@ -2,7 +2,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from metaapi_cloud_sdk import MetaApi
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,8 @@ TP_PCT = 0.02
 SL_PCT = 0.01
 DAILY_TARGET_PCT = 0.02
 
-# Exness standard account symbol names
+BASE_URL = "https://mt-client-api-v1.london.agiliumtrade.ai"
+
 SYMBOL_MAP = {
     "BTC/USD": "BTCUSD",
     "ETH/USD": "ETHUSD",
@@ -19,7 +20,6 @@ SYMBOL_MAP = {
     "EUR/USD": "EURUSD",
 }
 
-# Units per standard lot on Exness
 CONTRACT_SIZES = {
     "BTCUSD": 1,
     "ETHUSD": 1,
@@ -28,8 +28,16 @@ CONTRACT_SIZES = {
 }
 
 
+def _headers() -> dict:
+    return {"auth-token": os.environ["METAAPI_TOKEN"]}
+
+
+def _account_url(path: str) -> str:
+    account_id = os.environ["METAAPI_ACCOUNT_ID"]
+    return f"{BASE_URL}/users/current/accounts/{account_id}/{path}"
+
+
 def calculate_lot_size(balance: float, entry_price: float, sl_price: float, symbol: str) -> float:
-    """Risk-based lot sizing: balance * 1% / (sl_distance * contract_size)."""
     risk_amount = balance * RISK_PCT
     sl_distance = abs(entry_price - sl_price)
     if sl_distance == 0:
@@ -39,70 +47,73 @@ def calculate_lot_size(balance: float, entry_price: float, sl_price: float, symb
     return max(0.01, min(round(lots, 2), 10.0))
 
 
-async def connect():
-    """Returns (api, connection) or (None, None) on failure."""
-    try:
-        api = MetaApi(os.environ["METAAPI_TOKEN"])
-        account = await api.metatrader_account_api.get_account(os.environ["METAAPI_ACCOUNT_ID"])
-        if account.state not in ("DEPLOYING", "DEPLOYED"):
-            await account.deploy()
-        await account.wait_connected()
-        conn = account.get_rpc_connection()
-        await conn.connect()
-        await conn.wait_synchronized({"timeoutInSeconds": 60})
-        logger.info("MetaAPI: conectado")
-        return api, conn
-    except Exception as e:
-        logger.error(f"MetaAPI: error de conexión — {e}")
-        return None, None
+async def get_balance() -> float:
+    async with httpx.AsyncClient(timeout=15, verify=False) as client:
+        r = await client.get(_account_url("account-information"), headers=_headers())
+        r.raise_for_status()
+        return float(r.json()["balance"])
 
 
-async def get_balance(conn) -> float:
-    info = await conn.get_account_information()
-    return float(info["balance"])
-
-
-async def get_daily_profit(conn) -> float:
-    """Sum of realized P&L from closed trades today (UTC)."""
+async def get_daily_profit() -> float:
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     now = datetime.now(timezone.utc)
+    from_str = today.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    to_str = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
     try:
-        deals = await conn.get_deals_by_time_range(today, now)
-        trade_types = {"DEAL_TYPE_BUY", "DEAL_TYPE_SELL"}
-        return sum(float(d.get("profit", 0)) for d in deals if d.get("type") in trade_types)
+        async with httpx.AsyncClient(timeout=15, verify=False) as client:
+            r = await client.get(
+                _account_url(f"history-deals/time/{from_str}/{to_str}"),
+                headers=_headers(),
+            )
+            r.raise_for_status()
+            deals = r.json()
+            trade_types = {"DEAL_TYPE_BUY", "DEAL_TYPE_SELL"}
+            return sum(float(d.get("profit", 0)) for d in deals if d.get("type") in trade_types)
     except Exception as e:
         logger.error(f"Error obteniendo P&L diario: {e}")
         return 0.0
 
 
-async def has_open_position(conn, symbol: str) -> bool:
+async def has_open_position(symbol: str) -> bool:
     try:
-        positions = await conn.get_positions()
-        return any(p["symbol"] == symbol for p in positions)
+        async with httpx.AsyncClient(timeout=15, verify=False) as client:
+            r = await client.get(_account_url("positions"), headers=_headers())
+            r.raise_for_status()
+            return any(p["symbol"] == symbol for p in r.json())
     except Exception as e:
-        logger.error(f"Error verificando posiciones abiertas: {e}")
+        logger.error(f"Error verificando posiciones: {e}")
         return False
 
 
-async def open_trade(conn, symbol: str, signal: str, entry_price: float, balance: float) -> dict | None:
-    """Opens a market order with automatic TP/SL. Returns trade details or None on failure."""
+async def open_trade(symbol: str, signal: str, entry_price: float, balance: float) -> dict | None:
     try:
         if signal == "BUY":
             sl = round(entry_price * (1 - SL_PCT), 5)
             tp = round(entry_price * (1 + TP_PCT), 5)
+            action = "ORDER_TYPE_BUY"
         else:
             sl = round(entry_price * (1 + SL_PCT), 5)
             tp = round(entry_price * (1 - TP_PCT), 5)
+            action = "ORDER_TYPE_SELL"
 
         lots = calculate_lot_size(balance, entry_price, sl, symbol)
 
-        if signal == "BUY":
-            await conn.create_market_buy_order(symbol, lots, sl, tp, {"comment": "ForexSense"})
-        else:
-            await conn.create_market_sell_order(symbol, lots, sl, tp, {"comment": "ForexSense"})
+        payload = {
+            "actionType": action,
+            "symbol": symbol,
+            "volume": lots,
+            "stopLoss": sl,
+            "takeProfit": tp,
+            "comment": "ForexSense",
+        }
+
+        async with httpx.AsyncClient(timeout=15, verify=False) as client:
+            r = await client.post(_account_url("trade"), headers=_headers(), json=payload)
+            r.raise_for_status()
 
         logger.info(f"{symbol}: orden {signal} abierta — {lots} lots | TP={tp} | SL={sl}")
         return {"lots": lots, "sl": sl, "tp": tp}
+
     except Exception as e:
         logger.error(f"{symbol}: error abriendo orden — {e}")
         return None

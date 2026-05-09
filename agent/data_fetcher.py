@@ -1,11 +1,17 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone, timedelta
 
-import ccxt
 import pandas as pd
 import yfinance as yf
 
 logger = logging.getLogger(__name__)
+
+_YFINANCE_TIMEOUT = 30  # seconds per request
+
+
+def _yfinance_history(ticker: str) -> pd.DataFrame:
+    return yf.Ticker(ticker).history(period="30d", interval="1h", auto_adjust=True)
 
 
 def fetch_crypto(ticker: str, timeframe: str, limit: int = 150) -> pd.DataFrame | None:
@@ -27,8 +33,13 @@ def _resample_to_4h(df_1h: pd.DataFrame) -> pd.DataFrame:
 
 def fetch_tradfi(ticker: str, timeframe: str, limit: int = 150, is_crypto: bool = False) -> pd.DataFrame | None:
     try:
-        ticker_obj = yf.Ticker(ticker)
-        raw = ticker_obj.history(period="30d", interval="1h", auto_adjust=True)
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            future = ex.submit(_yfinance_history, ticker)
+            try:
+                raw = future.result(timeout=_YFINANCE_TIMEOUT)
+            except FuturesTimeoutError:
+                logger.warning(f"{ticker}: timeout fetching data ({_YFINANCE_TIMEOUT}s)")
+                return None
 
         if raw.empty:
             logger.warning(f"No data returned for {ticker}")

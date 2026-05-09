@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -141,7 +142,7 @@ def calculate_targets(price: float, signal: str) -> tuple[float, float]:
     return round(price * 0.98, 6), round(price * 1.01, 6)
 
 
-def analyze_asset(
+async def analyze_asset(
     asset: str,
     price: float,
     indicators_1h: dict,
@@ -153,13 +154,12 @@ def analyze_asset(
     session: str,
     sr_levels: dict,
 ) -> dict | None:
-    # Only call Claude when 3+ TA conditions are met (task 5.5)
     if conditions_count < 3:
         logger.info(f"{asset}: solo {conditions_count} condiciones TA (mínimo 3 para llamar a Claude)")
         return None
 
     prompt = build_prompt(asset, price, indicators_1h, trend_4h, setup_type, daily_movement, patterns, session, sr_levels)
-    result = query_claude(prompt)
+    result = await asyncio.to_thread(query_claude, prompt)
 
     if result is None:
         return None

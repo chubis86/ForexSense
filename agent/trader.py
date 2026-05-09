@@ -109,7 +109,9 @@ async def open_trade(symbol: str, signal: str, entry_price: float, balance: floa
 
         async with httpx.AsyncClient(timeout=15, verify=False) as client:
             r = await client.post(_account_url("trade"), headers=_headers(), json=payload)
-            r.raise_for_status()
+            if not r.is_success:
+                logger.error(f"{symbol}: MetaAPI {r.status_code} — {r.text[:300]}")
+                r.raise_for_status()
 
         logger.info(f"{symbol}: orden {signal} abierta — {lots} lots | TP={tp} | SL={sl}")
         return {"lots": lots, "sl": sl, "tp": tp}

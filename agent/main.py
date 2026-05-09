@@ -59,13 +59,10 @@ async def process_asset(asset: dict, trading_enabled: bool, balance: float) -> N
     logger.info(f"--- Procesando {name} ---")
 
     try:
-        # 1. Fetch data
-        if asset["source"] == "crypto":
-            df_1h = fetch_crypto(asset["ticker"], "1h")
-            df_4h = fetch_crypto(asset["ticker"], "4h")
-        else:
-            df_1h = fetch_tradfi(asset["ticker"], "1h")
-            df_4h = fetch_tradfi(asset["ticker"], "4h")
+        # 1. Fetch data (run in thread to avoid blocking the event loop)
+        fetch_fn = fetch_crypto if asset["source"] == "crypto" else fetch_tradfi
+        df_1h = await asyncio.to_thread(fetch_fn, asset["ticker"], "1h")
+        df_4h = await asyncio.to_thread(fetch_fn, asset["ticker"], "4h")
 
         if df_1h is None or df_4h is None:
             logger.info(f"{name}: datos no disponibles, saltando")
@@ -111,7 +108,7 @@ async def process_asset(asset: dict, trading_enabled: bool, balance: float) -> N
         logger.info(f"{name}: sesión de mercado = {session}")
 
         # 5. Claude confirmation
-        result = analyze_asset(
+        result = await analyze_asset(
             asset=name,
             price=current_price,
             indicators_1h=indicators_1h,
@@ -183,8 +180,10 @@ async def main() -> None:
     session = get_market_session()
     logger.info(f"Sesión de mercado actual: {session}")
 
-    for asset in ASSETS:
-        await process_asset(asset, trading_enabled, balance)
+    await asyncio.gather(*[
+        process_asset(asset, trading_enabled, balance)
+        for asset in ASSETS
+    ])
 
     logger.info("=== ForexSense completado ===")
 

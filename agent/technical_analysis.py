@@ -26,10 +26,15 @@ def calculate_indicators_1h(df: pd.DataFrame) -> dict | None:
     bb = ta_lib.volatility.BollingerBands(close=close, window=20, window_dev=2)
     ema20_series = ta_lib.trend.EMAIndicator(close=close, window=20).ema_indicator().dropna()
     ema50_series = ta_lib.trend.EMAIndicator(close=close, window=50).ema_indicator().dropna()
+    atr_series = ta_lib.volatility.AverageTrueRange(
+        high=df["high"], low=df["low"], close=close, window=14
+    ).average_true_range().dropna()
 
     if any(len(s) < 2 for s in [rsi_series, macd_series, macd_signal_series, ema20_series, ema50_series]):
         logger.warning("Datos insuficientes tras calcular indicadores")
         return None
+
+    atr = float(atr_series.iloc[-1]) if len(atr_series) >= 1 else None
 
     return {
         "rsi": float(rsi_series.iloc[-1]),
@@ -44,6 +49,7 @@ def calculate_indicators_1h(df: pd.DataFrame) -> dict | None:
         "ema20": float(ema20_series.iloc[-1]),
         "ema50": float(ema50_series.iloc[-1]),
         "close": float(close.iloc[-1]),
+        "atr": atr,
     }
 
 

@@ -4,6 +4,7 @@ import logging
 import os
 
 import anthropic
+from trader import SL_ATR_MULT, TP_ATR_MULT
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,12 @@ def query_claude(prompt: str) -> dict | None:
         return None
 
 
-def calculate_targets(price: float, signal: str) -> tuple[float, float]:
+def calculate_targets(price: float, signal: str, atr: float | None = None) -> tuple[float, float]:
+    """Returns (target, stop). Uses ATR-based levels when available, falls back to fixed %."""
+    if atr is not None and atr > 0:
+        if signal == "BUY":
+            return round(price + atr * TP_ATR_MULT, 6), round(price - atr * SL_ATR_MULT, 6)
+        return round(price - atr * TP_ATR_MULT, 6), round(price + atr * SL_ATR_MULT, 6)
     if signal == "BUY":
         return round(price * 1.02, 6), round(price * 0.99, 6)
     return round(price * 0.98, 6), round(price * 1.01, 6)
@@ -164,7 +170,9 @@ async def analyze_asset(
     if result is None:
         return None
 
-    target, stop = calculate_targets(price, result["signal"])
+    atr = indicators_1h.get("atr")
+    target, stop = calculate_targets(price, result["signal"], atr)
+    macd_cross = "bullish" if indicators_1h["macd"] > indicators_1h["macd_signal"] else "bearish"
     return {
         "asset": asset,
         "price": price,
@@ -172,7 +180,7 @@ async def analyze_asset(
         "strength": result["strength"],
         "reasoning": result["reasoning"],
         "trend_4h": trend_4h,
-        "indicators_1h": indicators_1h,
+        "indicators_1h": {**indicators_1h, "macd_cross": macd_cross},
         "patterns": patterns,
         "session": session,
         "target": target,

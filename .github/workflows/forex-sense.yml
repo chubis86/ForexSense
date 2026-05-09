@@ -1,8 +1,6 @@
 name: ForexSense
 
 on:
-  push:
-    branches: [master]
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
@@ -21,6 +19,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Restore positions state
+        uses: actions/cache/restore@v4
+        with:
+          path: positions_state.json
+          key: forex-sense-positions-${{ github.run_id }}
+          restore-keys: forex-sense-positions-
+
       - name: Run ForexSense
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -28,4 +33,12 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           METAAPI_TOKEN: ${{ secrets.METAAPI_TOKEN }}
           METAAPI_ACCOUNT_ID: ${{ secrets.METAAPI_ACCOUNT_ID }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
         run: python agent/main.py
+
+      - name: Save positions state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: positions_state.json
+          key: forex-sense-positions-${{ github.run_id }}

@@ -16,6 +16,7 @@ from technical_analysis import (
 from signal_engine import analyze_asset
 from notifier import send_message, send_signal, send_closure_notification
 from calendar_filter import fetch_high_impact_events, is_news_blackout
+from trade_log import log_trade_open, log_trade_close, get_context_for_signal
 from state import load_positions, save_positions
 from trader import (
     DAILY_TARGET_PCT,
@@ -163,6 +164,12 @@ async def process_asset(asset: dict, trading_enabled: bool, balance: float, news
                     return
                 trade_result = await open_trade(symbol, signal, current_price, balance, atr=atr)
                 result["trade"] = trade_result
+                if trade_result:
+                    # Find the new position ID to associate with this signal
+                    new_positions = await get_open_positions()
+                    new_pos = next((p for p in new_positions if p.get("symbol") == symbol), None)
+                    pos_id = str(new_pos.get("id", symbol)) if new_pos else symbol
+                    log_trade_open(pos_id, result, trade_result)
         else:
             logger.warning(f"{name}: MetaAPI no disponible — señal sin ejecutar")
 
@@ -190,6 +197,7 @@ async def check_closed_positions() -> list:
                 deal = deals_by_pos.get(pos_id)
                 if deal:
                     await send_closure_notification(deal, pos)
+                    log_trade_close(pos_id, deal)
                 else:
                     logger.info(f"Posición {pos.get('symbol')} cerrada — deal no encontrado en historial reciente")
 

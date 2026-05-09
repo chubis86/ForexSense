@@ -19,12 +19,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Restore positions state
+      - name: Restore state files
         uses: actions/cache/restore@v4
         with:
-          path: positions_state.json
-          key: forex-sense-positions-${{ github.run_id }}
-          restore-keys: forex-sense-positions-
+          path: |
+            positions_state.json
+            trades_log.json
+          key: forex-sense-state-${{ github.run_id }}
+          restore-keys: forex-sense-state-
 
       - name: Run ForexSense
         env:
@@ -36,9 +38,11 @@ jobs:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
         run: python agent/main.py
 
-      - name: Save positions state
+      - name: Save state files
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: positions_state.json
-          key: forex-sense-positions-${{ github.run_id }}
+          path: |
+            positions_state.json
+            trades_log.json
+          key: forex-sense-state-${{ github.run_id }}

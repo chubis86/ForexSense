@@ -5,6 +5,7 @@ import os
 
 import anthropic
 from trader import SL_ATR_MULT, TP_ATR_MULT
+from trade_log import get_context_for_signal
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,14 @@ When the context includes detected patterns, weight them as follows:
 - Setup during tokyo = moderate (unless JPY pair)
 - Setup during off_hours = reduce strength by one level (HIGH→MEDIUM, MEDIUM→LOW)
 
+### Historical performance data (when provided)
+If the context includes a `historical_performance` field, use it to calibrate your confidence:
+- `overall_win_rate` < 0.34 → be more conservative, prefer NONE or LOW
+- `asset_win_rate` significantly above/below overall → adjust strength accordingly
+- `session_win_rate` > 0.55 → this session has been reliable, can boost confidence
+- `pattern_win_rates` → patterns with > 0.60 win rate are strong confirmations
+- Always consider `sample_size`: below 20 trades, treat stats as indicative only
+
 ## Your output
 Respond ONLY with valid JSON: {"signal": "BUY"|"SELL"|"NONE", "strength": "HIGH"|"MEDIUM"|"LOW", "reasoning": "<max 120 chars>"}
 - signal: BUY, SELL, or NONE (if setup is weak or risky)
@@ -64,6 +73,7 @@ def build_prompt(
     patterns: list,
     session: str,
     sr_levels: dict,
+    perf_stats: dict | None = None,
 ) -> str:
     macd_cross = "bullish" if indicators_1h["macd"] > indicators_1h["macd_signal"] else "bearish"
     bb_pos = "near_lower" if indicators_1h["close"] <= indicators_1h["bb_lower"] * 1.01 else \
@@ -92,6 +102,8 @@ def build_prompt(
         "breakout_retest": sr_levels["breakout_retest"],
         "retest_direction": sr_levels["retest_direction"],
     }
+    if perf_stats is not None:
+        context["historical_performance"] = perf_stats
     return json.dumps(context, ensure_ascii=False)
 
 
@@ -164,7 +176,10 @@ async def analyze_asset(
         logger.info(f"{asset}: solo {conditions_count} condiciones TA (mínimo 3 para llamar a Claude)")
         return None
 
-    prompt = build_prompt(asset, price, indicators_1h, trend_4h, setup_type, daily_movement, patterns, session, sr_levels)
+    perf_stats = get_context_for_signal(asset, session, patterns)
+    if perf_stats:
+        logger.info(f"{asset}: incluyendo histórico ({perf_stats['sample_size']} trades cerrados, WR={perf_stats['overall_win_rate']:.1%})")
+    prompt = build_prompt(asset, price, indicators_1h, trend_4h, setup_type, daily_movement, patterns, session, sr_levels, perf_stats)
     result = await asyncio.to_thread(query_claude, prompt)
 
     if result is None:

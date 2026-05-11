@@ -54,8 +54,6 @@ def calculate_indicators_1h(df: pd.DataFrame) -> dict | None:
         "macd": float(macd_series.iloc[-1]),
         "macd_signal": float(macd_signal_series.iloc[-1]),
         "macd_hist": float(macd_hist_series.iloc[-1]),
-        "macd_prev": float(macd_series.iloc[-2]),
-        "macd_signal_prev": float(macd_signal_series.iloc[-2]),
         "bb_lower": float(bb_lower_s.iloc[-1]),
         "bb_mid": float(bb_mid_s.iloc[-1]),
         "bb_upper": float(bb_upper_s.iloc[-1]),

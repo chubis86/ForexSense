@@ -47,9 +47,9 @@ def format_message(signal_data: dict) -> str:
 
     lines = [
         f"{emoji} *SEÑAL DE {direction} — {asset}*",
-        f"💰 Precio: `{price:,.5g}`",
-        f"🎯 Target: `{target:,.5g}` ({target_pct})",
-        f"🛑 Stop: `{stop:,.5g}` ({stop_pct})",
+        f"💰 Precio: `{price:,.6g}`",
+        f"🎯 Target: `{target:,.6g}` ({target_pct})",
+        f"🛑 Stop: `{stop:,.6g}` ({stop_pct})",
         f"📊 RSI(1H): {rsi}  |  MACD: {macd_desc}",
         f"{trend_emoji} Tendencia 4H: {trend_label}",
         f"⚡ Fuerza: {strength_label}",

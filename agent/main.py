@@ -16,7 +16,7 @@ from technical_analysis import (
 from signal_engine import analyze_asset
 from notifier import send_message, send_signal, send_closure_notification
 from calendar_filter import fetch_high_impact_events, is_news_blackout
-from trade_log import log_trade_open, log_trade_close, get_context_for_signal
+from trade_log import log_trade_open, log_trade_close
 from state import load_positions, save_positions
 from trader import (
     DAILY_TARGET_PCT,

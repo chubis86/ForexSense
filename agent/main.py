@@ -165,10 +165,15 @@ async def process_asset(asset: dict, trading_enabled: bool, balance: float, news
                 trade_result = await open_trade(symbol, signal, current_price, balance, atr=atr)
                 result["trade"] = trade_result
                 if trade_result:
-                    # Find the new position ID to associate with this signal
-                    new_positions = await get_open_positions()
-                    new_pos = next((p for p in new_positions if p.get("symbol") == symbol), None)
-                    pos_id = str(new_pos.get("id", symbol)) if new_pos else symbol
+                    # Retry up to 3 times: MetaAPI may not propagate the new position instantly
+                    pos_id = symbol
+                    for attempt in range(3):
+                        new_positions = await get_open_positions()
+                        new_pos = next((p for p in new_positions if p.get("symbol") == symbol), None)
+                        if new_pos:
+                            pos_id = str(new_pos.get("id", symbol))
+                            break
+                        await asyncio.sleep(1)
                     log_trade_open(pos_id, result, trade_result)
         else:
             logger.warning(f"{name}: MetaAPI no disponible — señal sin ejecutar")

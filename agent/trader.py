@@ -122,6 +122,21 @@ async def get_open_positions_count() -> int:
     return len(await get_open_positions())
 
 
+async def get_trade_eligibility(symbol: str) -> str | None:
+    """Single API call: returns None if eligible to trade, else a reason string."""
+    positions = await get_open_positions()
+    if any(p.get("symbol") == symbol for p in positions):
+        return "ya hay una posición abierta"
+    group = next((g for g in CORRELATED_GROUPS if symbol in g), None)
+    if group:
+        open_symbols = {p.get("symbol") for p in positions}
+        if (group - {symbol}) & open_symbols:
+            return "activo correlacionado ya tiene posición abierta"
+    if len(positions) >= MAX_OPEN_POSITIONS:
+        return f"máximo de posiciones ({MAX_OPEN_POSITIONS}) alcanzado"
+    return None
+
+
 async def get_unrealized_pnl() -> float:
     positions = await get_open_positions()
     return sum(float(p.get("unrealizedProfit", 0)) for p in positions)

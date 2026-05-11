@@ -122,10 +122,10 @@ def detect_setup(indicators: dict, trend_4h: str) -> tuple[str | None, int]:
     elif indicators["rsi"] > 70:
         sell_conds += 1
 
-    # MACD crossover
-    if indicators["macd_prev"] < indicators["macd_signal_prev"] and indicators["macd"] >= indicators["macd_signal"]:
+    # MACD position (above/below signal line)
+    if indicators["macd"] > indicators["macd_signal"]:
         buy_conds += 1
-    elif indicators["macd_prev"] > indicators["macd_signal_prev"] and indicators["macd"] <= indicators["macd_signal"]:
+    elif indicators["macd"] < indicators["macd_signal"]:
         sell_conds += 1
 
     # Bollinger position — context-aware: trending vs ranging market

@@ -189,8 +189,8 @@ async def analyze_asset(
     session: str,
     sr_levels: dict,
 ) -> dict | None:
-    if conditions_count < 3:
-        logger.info(f"{asset}: solo {conditions_count} condiciones TA (mínimo 3 para llamar a Claude)")
+    if conditions_count < 2:
+        logger.info(f"{asset}: solo {conditions_count} condiciones TA (mínimo 2 para llamar a Claude)")
         return None
 
     perf_stats = get_context_for_signal(asset, session, patterns)

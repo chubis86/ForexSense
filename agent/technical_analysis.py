@@ -29,12 +29,25 @@ def calculate_indicators_1h(df: pd.DataFrame) -> dict | None:
     atr_series = ta_lib.volatility.AverageTrueRange(
         high=df["high"], low=df["low"], close=close, window=14
     ).average_true_range().dropna()
+    adx_obj = ta_lib.trend.ADXIndicator(high=df["high"], low=df["low"], close=close, window=14)
+    adx_series = adx_obj.adx().dropna()
+    vol_sma_series = ta_lib.trend.SMAIndicator(close=df["volume"].astype(float), window=20).sma_indicator().dropna()
 
     if any(len(s) < 2 for s in [rsi_series, macd_series, macd_signal_series, ema20_series, ema50_series]):
         logger.warning("Datos insuficientes tras calcular indicadores")
         return None
 
     atr = float(atr_series.iloc[-1]) if len(atr_series) >= 1 else None
+    adx = float(adx_series.iloc[-1]) if len(adx_series) >= 1 else 25.0
+    volume = float(df["volume"].iloc[-1])
+    volume_sma = float(vol_sma_series.iloc[-1]) if len(vol_sma_series) >= 1 else volume
+
+    bb_upper_s = bb.bollinger_hband()
+    bb_lower_s = bb.bollinger_lband()
+    bb_mid_s = bb.bollinger_mavg()
+    bb_width_s = ((bb_upper_s - bb_lower_s) / bb_mid_s).dropna()
+    bb_width = float(bb_width_s.iloc[-1]) if len(bb_width_s) >= 1 else 0.0
+    bb_width_avg = float(bb_width_s.tail(20).mean()) if len(bb_width_s) >= 20 else bb_width
 
     return {
         "rsi": float(rsi_series.iloc[-1]),
@@ -43,34 +56,39 @@ def calculate_indicators_1h(df: pd.DataFrame) -> dict | None:
         "macd_hist": float(macd_hist_series.iloc[-1]),
         "macd_prev": float(macd_series.iloc[-2]),
         "macd_signal_prev": float(macd_signal_series.iloc[-2]),
-        "bb_lower": float(bb.bollinger_lband().iloc[-1]),
-        "bb_mid": float(bb.bollinger_mavg().iloc[-1]),
-        "bb_upper": float(bb.bollinger_hband().iloc[-1]),
+        "bb_lower": float(bb_lower_s.iloc[-1]),
+        "bb_mid": float(bb_mid_s.iloc[-1]),
+        "bb_upper": float(bb_upper_s.iloc[-1]),
+        "bb_width": bb_width,
+        "bb_width_avg": bb_width_avg,
         "ema20": float(ema20_series.iloc[-1]),
         "ema50": float(ema50_series.iloc[-1]),
         "close": float(close.iloc[-1]),
         "atr": atr,
+        "adx": adx,
+        "volume": volume,
+        "volume_sma": volume_sma,
     }
 
 
 def get_4h_trend(df_4h: pd.DataFrame) -> str:
-    if len(df_4h) < 50:
+    if len(df_4h) < 200:
         return "NEUTRAL"
 
     close = df_4h["close"]
-    ema20_s = ta_lib.trend.EMAIndicator(close=close, window=20).ema_indicator().dropna()
     ema50_s = ta_lib.trend.EMAIndicator(close=close, window=50).ema_indicator().dropna()
+    ema200_s = ta_lib.trend.EMAIndicator(close=close, window=200).ema_indicator().dropna()
     macd_hist_s = ta_lib.trend.MACD(close=close, window_slow=26, window_fast=12, window_sign=9).macd_diff().dropna()
 
-    if any(len(s) < 1 for s in [ema20_s, ema50_s, macd_hist_s]):
+    if any(len(s) < 1 for s in [ema50_s, ema200_s, macd_hist_s]):
         return "NEUTRAL"
 
-    ema20 = float(ema20_s.iloc[-1])
     ema50 = float(ema50_s.iloc[-1])
+    ema200 = float(ema200_s.iloc[-1])
     macd_hist = float(macd_hist_s.iloc[-1])
 
-    bullish = ema20 > ema50 and macd_hist > 0
-    bearish = ema20 < ema50 and macd_hist < 0
+    bullish = ema50 > ema200 and macd_hist > 0
+    bearish = ema50 < ema200 and macd_hist < 0
 
     if bullish:
         return "BULLISH"
@@ -89,13 +107,19 @@ def _bb_position(price: float, bb_lower: float, bb_upper: float) -> str:
 
 def detect_setup(indicators: dict, trend_4h: str) -> tuple[str | None, int]:
     """Returns (setup_type, conditions_count). setup_type is None if no setup."""
+    # ADX filter: skip choppy/ranging markets
+    adx = indicators.get("adx", 25.0)
+    if adx < 20:
+        logger.info(f"ADX {adx:.1f} < 20 — mercado en rango, sin setup")
+        return None, 0
+
     buy_conds = 0
     sell_conds = 0
 
-    # RSI extremes
-    if indicators["rsi"] < 35:
+    # RSI extremes (standard levels 30/70)
+    if indicators["rsi"] < 30:
         buy_conds += 1
-    elif indicators["rsi"] > 65:
+    elif indicators["rsi"] > 70:
         sell_conds += 1
 
     # MACD crossover
@@ -104,12 +128,21 @@ def detect_setup(indicators: dict, trend_4h: str) -> tuple[str | None, int]:
     elif indicators["macd_prev"] > indicators["macd_signal_prev"] and indicators["macd"] <= indicators["macd_signal"]:
         sell_conds += 1
 
-    # Bollinger position
+    # Bollinger position — context-aware: trending vs ranging market
     bb_pos = _bb_position(indicators["close"], indicators["bb_lower"], indicators["bb_upper"])
-    if bb_pos == "near_lower":
-        buy_conds += 1
-    elif bb_pos == "near_upper":
-        sell_conds += 1
+    bb_trending = indicators.get("bb_width", 0) > indicators.get("bb_width_avg", 0)
+    if bb_trending:
+        # Expanding bands (trending): band touch = continuation
+        if bb_pos == "near_upper" and trend_4h == "BULLISH":
+            buy_conds += 1
+        elif bb_pos == "near_lower" and trend_4h == "BEARISH":
+            sell_conds += 1
+    else:
+        # Contracting bands (ranging): band touch = mean reversion
+        if bb_pos == "near_lower":
+            buy_conds += 1
+        elif bb_pos == "near_upper":
+            sell_conds += 1
 
     if buy_conds >= 2:
         setup_type, count = "setup_buy", buy_conds
@@ -117,6 +150,11 @@ def detect_setup(indicators: dict, trend_4h: str) -> tuple[str | None, int]:
         setup_type, count = "setup_sell", sell_conds
     else:
         return None, 0
+
+    # Volume confirmation: high volume boosts signal quality
+    vol_ratio = indicators.get("volume", 0) / max(indicators.get("volume_sma", 1), 1)
+    if vol_ratio > 1.2:
+        count += 1
 
     # Counter-trend rejection
     if setup_type == "setup_buy" and trend_4h == "BEARISH":

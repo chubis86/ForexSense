@@ -11,7 +11,7 @@ _YFINANCE_TIMEOUT = 30  # seconds per request
 
 
 def _yfinance_history(ticker: str) -> pd.DataFrame:
-    return yf.Ticker(ticker).history(period="30d", interval="1h", auto_adjust=True)
+    return yf.Ticker(ticker).history(period="90d", interval="1h", auto_adjust=True)
 
 
 def fetch_crypto(ticker: str, timeframe: str, limit: int = 150) -> pd.DataFrame | None:
@@ -56,7 +56,7 @@ def fetch_tradfi(ticker: str, timeframe: str, limit: int = 150, is_crypto: bool 
 
         raw["timestamp"] = pd.to_datetime(raw["timestamp"], utc=True)
         df = raw[["timestamp", "open", "high", "low", "close", "volume"]].copy()
-        df = df.sort_values("timestamp").tail(limit).reset_index(drop=True)
+        df = df.sort_values("timestamp").reset_index(drop=True)
 
         # Detect closed market: last candle older than 2 hours (skip for crypto — 24/7)
         if not is_crypto:
@@ -67,8 +67,9 @@ def fetch_tradfi(ticker: str, timeframe: str, limit: int = 150, is_crypto: bool 
 
         if timeframe == "4h":
             df = _resample_to_4h(df)
+            return df.tail(250).reset_index(drop=True)  # 250 candles: enough for EMA200
 
-        return df
+        return df.tail(limit).reset_index(drop=True)
     except Exception as e:
         logger.error(f"Error fetching tradfi {ticker} {timeframe}: {e}")
         return None

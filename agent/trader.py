@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 RISK_PCT = 0.01
 TP_PCT = 0.02
 SL_PCT = 0.01
-DAILY_TARGET_PCT = 0.01   # 1.0% daily target
+DAILY_TARGET_PCT = 0.03   # 3.0% daily target — let good days run
 DAILY_LOSS_PCT = 0.01   # Stop trading if down -1% on the day
 MAX_OPEN_POSITIONS = 2  # Maximum simultaneous trades across all assets
 SL_ATR_MULT = 1.5       # ATR multiplier for stop loss
@@ -31,6 +31,11 @@ CONTRACT_SIZES = {
     "XAUUSD": 100,
     "EURUSD": 100_000,
 }
+
+# Assets that cannot hold simultaneous positions due to high correlation
+CORRELATED_GROUPS: list[frozenset] = [
+    frozenset({"BTCUSD", "ETHUSD"}),
+]
 
 
 def _headers() -> dict:
@@ -105,6 +110,16 @@ async def get_open_positions() -> list:
 async def has_open_position(symbol: str) -> bool:
     positions = await get_open_positions()
     return any(p["symbol"] == symbol for p in positions)
+
+
+async def has_open_correlated_position(symbol: str) -> bool:
+    """Returns True if another asset in the same correlation group has an open position."""
+    group = next((g for g in CORRELATED_GROUPS if symbol in g), None)
+    if group is None:
+        return False
+    positions = await get_open_positions()
+    open_symbols = {p["symbol"] for p in positions}
+    return bool((group - {symbol}) & open_symbols)
 
 
 async def get_open_positions_count() -> int:

@@ -30,6 +30,7 @@ from trader import (
     get_open_positions_count,
     get_closed_deals_since,
     has_open_position,
+    has_open_correlated_position,
     open_trade,
 )
 
@@ -157,6 +158,10 @@ async def process_asset(asset: dict, trading_enabled: bool, balance: float, news
                 already_open = await has_open_position(symbol)
                 if already_open:
                     logger.info(f"{name}: ya hay una posición abierta, omitiendo")
+                    return
+                correlated_open = await has_open_correlated_position(symbol)
+                if correlated_open:
+                    logger.info(f"{name}: activo correlacionado ya tiene posición abierta, omitiendo")
                     return
                 current_open = await get_open_positions_count()
                 if current_open >= MAX_OPEN_POSITIONS:

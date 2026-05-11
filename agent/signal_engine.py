@@ -33,6 +33,20 @@ You analyze pre-filtered technical setups and decide whether to confirm or rejec
 - Off-hours EUR/USD or XAU/USD breakout: low liquidity = false break → reject
 - Counter-trend RSI divergence in strong trend: mean-reversion trap → downgrade to LOW
 
+### Trend strength (adx in context)
+- ADX 20–25: trend forming, be selective — prefer NONE over LOW on marginal setups
+- ADX 25–40: confirmed trend, good for continuation setups
+- ADX > 40: strong trend — continuation favored, reversals very risky
+
+### Volume confirmation (volume_ratio in context)
+- volume_ratio > 1.5: strong conviction — boost strength if other factors agree
+- volume_ratio 1.2–1.5: setup confirmed by volume
+- volume_ratio < 0.8: low conviction — downgrade to NONE or LOW unless setup is exceptional
+
+### Bollinger Bands regime (bb_trending in context)
+- bb_trending=true: expanding bands (trending market) — band touches confirm continuation
+- bb_trending=false: contracting bands (ranging market) — band touches signal mean reversion
+
 ### Chart pattern confidence boost
 When the context includes detected patterns, weight them as follows:
 - double_top / double_bottom: strong reversal signal → boost confirmation if aligned with setup
@@ -91,6 +105,9 @@ def build_prompt(
             "macd_cross": macd_cross,
             "macd_histogram": round(indicators_1h["macd_hist"], 6),
             "bb_position": bb_pos,
+            "bb_trending": indicators_1h.get("bb_width", 0) > indicators_1h.get("bb_width_avg", 0),
+            "adx": round(indicators_1h.get("adx", 25.0), 1),
+            "volume_ratio": round(indicators_1h.get("volume", 0) / max(indicators_1h.get("volume_sma", 1), 1), 2),
             "ema20": round(indicators_1h["ema20"], 6),
             "ema50": round(indicators_1h["ema50"], 6),
         },

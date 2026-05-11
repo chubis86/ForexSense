@@ -37,7 +37,7 @@ def format_message(signal_data: dict) -> str:
 
     rsi = round(indicators["rsi"], 1)
     macd_cross = indicators.get("macd_cross", "—")
-    macd_desc = "cruce alcista" if macd_cross == "bullish" else "cruce bajista"
+    macd_desc = "alcista" if macd_cross == "bullish" else "bajista"
 
     trend_label = {"BULLISH": "alcista ✓", "BEARISH": "bajista ✓", "NEUTRAL": "neutral"}.get(trend_4h, trend_4h)
 

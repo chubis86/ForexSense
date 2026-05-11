@@ -150,6 +150,10 @@ async def process_asset(asset: dict, trading_enabled: bool, balance: float, news
             logger.info(f"{name}: Claude descartó el setup")
             return
 
+        if strength == "LOW":
+            logger.info(f"{name}: señal de baja confianza ({strength}), omitida")
+            return
+
         # 7. Execute trade (semaphore prevents concurrent opens exceeding MAX_OPEN_POSITIONS)
         symbol = SYMBOL_MAP.get(name)
         atr = indicators_1h.get("atr")

@@ -192,7 +192,11 @@ async def process_asset(asset: dict, trading_enabled: bool, balance: float, news
 async def check_closed_positions() -> list:
     """Detects positions closed since last run, sends notifications, returns current positions."""
     prev_positions = load_positions()
-    current_positions = await get_open_positions()
+    try:
+        current_positions = await get_open_positions()
+    except Exception as e:
+        logger.warning(f"No se pudo obtener posiciones abiertas: {e} — omitiendo detección de cierres")
+        return prev_positions
 
     if prev_positions:
         current_ids = {str(p.get("id", "")) for p in current_positions}
@@ -264,11 +268,15 @@ async def main() -> None:
     logger.info(f"Sesión de mercado actual: {session}")
 
     if trading_enabled:
-        open_count = await get_open_positions_count()
-        logger.info(f"Posiciones abiertas: {open_count}/{MAX_OPEN_POSITIONS}")
-        if open_count >= MAX_OPEN_POSITIONS:
-            logger.info(f"Máximo de {MAX_OPEN_POSITIONS} posiciones simultáneas alcanzado. Sin nuevas operaciones.")
-            return
+        try:
+            open_count = await get_open_positions_count()
+            logger.info(f"Posiciones abiertas: {open_count}/{MAX_OPEN_POSITIONS}")
+            if open_count >= MAX_OPEN_POSITIONS:
+                logger.info(f"Máximo de {MAX_OPEN_POSITIONS} posiciones simultáneas alcanzado. Sin nuevas operaciones.")
+                return
+        except Exception as e:
+            logger.error(f"Error contando posiciones abiertas: {e}")
+            trading_enabled = False
 
     # Fetch economic calendar once — shared across all assets
     news_events = await fetch_high_impact_events()

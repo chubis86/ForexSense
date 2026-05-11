@@ -100,11 +100,7 @@ async def get_daily_profit() -> float:
 
 
 async def get_open_positions() -> list:
-    try:
-        return await _api_get(_account_url("positions"))  # type: ignore[return-value]
-    except Exception as e:
-        logger.error(f"Error obteniendo posiciones abiertas: {e}")
-        return []
+    return await _api_get(_account_url("positions"))  # type: ignore[return-value]
 
 
 async def has_open_position(symbol: str) -> bool:

@@ -14,11 +14,6 @@ def _yfinance_history(ticker: str) -> pd.DataFrame:
     return yf.Ticker(ticker).history(period="90d", interval="1h", auto_adjust=True)
 
 
-def fetch_crypto(ticker: str, timeframe: str, limit: int = 150) -> pd.DataFrame | None:
-    """Fetch crypto OHLCV via yfinance (e.g. BTC-USD, ETH-USD). No geo restrictions."""
-    return fetch_tradfi(ticker, timeframe, limit=limit, is_crypto=True)
-
-
 def _resample_to_4h(df_1h: pd.DataFrame) -> pd.DataFrame:
     df = df_1h.set_index("timestamp")
     df_4h = df.resample("4h").agg({
@@ -31,7 +26,8 @@ def _resample_to_4h(df_1h: pd.DataFrame) -> pd.DataFrame:
     return df_4h.reset_index()
 
 
-def fetch_tradfi(ticker: str, timeframe: str, limit: int = 150, is_crypto: bool = False) -> pd.DataFrame | None:
+def _fetch_normalized(ticker: str, is_crypto: bool = False) -> pd.DataFrame | None:
+    """Single yfinance download, normalized to standard columns. Returns None on failure or closed market."""
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
             future = ex.submit(_yfinance_history, ticker)
@@ -58,21 +54,39 @@ def fetch_tradfi(ticker: str, timeframe: str, limit: int = 150, is_crypto: bool 
         df = raw[["timestamp", "open", "high", "low", "close", "volume"]].copy()
         df = df.sort_values("timestamp").reset_index(drop=True)
 
-        # Detect closed market: last candle older than 2 hours (skip for crypto — 24/7)
         if not is_crypto:
             last_candle_age = datetime.now(timezone.utc) - df["timestamp"].iloc[-1].to_pydatetime()
             if last_candle_age > timedelta(hours=2):
                 logger.info(f"{ticker}: mercado cerrado (último candle hace {last_candle_age})")
                 return None
 
-        if timeframe == "4h":
-            df = _resample_to_4h(df)
-            return df.tail(250).reset_index(drop=True)  # 250 candles: enough for EMA200
-
-        return df.tail(limit).reset_index(drop=True)
+        return df
     except Exception as e:
-        logger.error(f"Error fetching tradfi {ticker} {timeframe}: {e}")
+        logger.error(f"Error fetching {ticker}: {e}")
         return None
+
+
+def fetch_ohlcv_both(ticker: str, is_crypto: bool = False) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
+    """Single download returning (df_1h, df_4h). Avoids fetching the same data twice."""
+    df = _fetch_normalized(ticker, is_crypto)
+    if df is None:
+        return None, None
+    df_1h = df.tail(150).reset_index(drop=True)
+    df_4h = _resample_to_4h(df).tail(250).reset_index(drop=True)
+    return df_1h, df_4h
+
+
+def fetch_crypto(ticker: str, timeframe: str, limit: int = 150) -> pd.DataFrame | None:
+    return fetch_tradfi(ticker, timeframe, limit=limit, is_crypto=True)
+
+
+def fetch_tradfi(ticker: str, timeframe: str, limit: int = 150, is_crypto: bool = False) -> pd.DataFrame | None:
+    df = _fetch_normalized(ticker, is_crypto)
+    if df is None:
+        return None
+    if timeframe == "4h":
+        return _resample_to_4h(df).tail(250).reset_index(drop=True)
+    return df.tail(limit).reset_index(drop=True)
 
 
 def get_day_open(df_1h: pd.DataFrame) -> float | None:

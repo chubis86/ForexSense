@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 
-from data_fetcher import fetch_crypto, fetch_tradfi, get_day_open
+from data_fetcher import fetch_ohlcv_both, get_day_open
 from daily_filter import check_daily_limit, get_daily_movement_pct
 from technical_analysis import (
     calculate_indicators_1h,
@@ -75,10 +75,9 @@ async def process_asset(asset: dict, trading_enabled: bool, balance: float, news
         if is_news_blackout(name, news_events):
             return
 
-        # 2. Fetch data (run in thread to avoid blocking the event loop)
-        fetch_fn = fetch_crypto if asset["source"] == "crypto" else fetch_tradfi
-        df_1h = await asyncio.to_thread(fetch_fn, asset["ticker"], "1h")
-        df_4h = await asyncio.to_thread(fetch_fn, asset["ticker"], "4h")
+        # 2. Fetch data once, derive both timeframes (avoids double download)
+        is_crypto = asset["source"] == "crypto"
+        df_1h, df_4h = await asyncio.to_thread(fetch_ohlcv_both, asset["ticker"], is_crypto)
 
         if df_1h is None or df_4h is None:
             logger.info(f"{name}: datos no disponibles, saltando")

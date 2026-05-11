@@ -166,7 +166,7 @@ async def process_asset(asset: dict, trading_enabled: bool, balance: float, news
                 if trade_result:
                     # Retry up to 3 times: MetaAPI may not propagate the new position instantly
                     pos_id = symbol
-                    for attempt in range(3):
+                    for _ in range(3):
                         new_positions = await get_open_positions()
                         new_pos = next((p for p in new_positions if p.get("symbol") == symbol), None)
                         if new_pos:

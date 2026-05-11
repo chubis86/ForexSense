@@ -56,10 +56,11 @@ def format_message(signal_data: dict) -> str:
     ]
 
     if reasoning:
-        lines.append(f"💬 _{reasoning}_")
+        lines.append(f"💬 {reasoning}")
 
     if patterns:
-        lines.append(f"📐 Patrón: {', '.join(patterns)}")
+        pattern_display = ", ".join(p.replace("_", " ") for p in patterns)
+        lines.append(f"📐 Patrón: {pattern_display}")
 
     if session:
         session_label = {

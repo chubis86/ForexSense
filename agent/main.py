@@ -118,6 +118,10 @@ async def process_asset(asset: dict, trading_enabled: bool, balance: float, news
         sr_levels = detect_sr_levels(df_1h)
         session = get_market_session()
 
+        if asset["source"] == "tradfi" and session in ("off_hours", "closed"):
+            logger.info(f"{name}: sesión inactiva ({session}), omitiendo activo tradfi")
+            return
+
         if patterns:
             logger.info(f"{name}: patrones detectados — {patterns}")
         logger.info(f"{name}: sesión de mercado = {session}")

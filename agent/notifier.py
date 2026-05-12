@@ -87,15 +87,12 @@ def format_message(signal_data: dict) -> str:
 
 
 async def send_message(text: str) -> None:
-    try:
-        bot = Bot(token=os.environ["TELEGRAM_BOT_TOKEN"])
-        await bot.send_message(
-            chat_id=os.environ["TELEGRAM_CHAT_ID"],
-            text=text,
-            parse_mode=ParseMode.MARKDOWN,
-        )
-    except Exception as e:
-        logger.error(f"Error enviando mensaje a Telegram: {e}")
+    bot = Bot(token=os.environ["TELEGRAM_BOT_TOKEN"])
+    await bot.send_message(
+        chat_id=os.environ["TELEGRAM_CHAT_ID"],
+        text=text,
+        parse_mode=ParseMode.MARKDOWN,
+    )
 
 
 async def send_closure_notification(deal: dict, prev_position: dict) -> None:

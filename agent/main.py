@@ -229,6 +229,8 @@ async def main() -> None:
 
     # Get account state via MetaAPI REST
     balance = 0.0
+    daily_pct = 0.0
+    daily_profit = 0.0
     trading_enabled = True
     try:
         balance = await get_balance()
@@ -240,7 +242,11 @@ async def main() -> None:
             f"Balance: {balance:.2f} | P&L hoy: {daily_profit:+.2f} ({daily_pct:+.2f}%) "
             f"[realizado: {realized_pnl:+.2f}, no realizado: {unrealized_pnl:+.2f}]"
         )
+    except Exception as e:
+        logger.error(f"Error consultando MetaAPI: {e}")
+        trading_enabled = False
 
+    if trading_enabled:
         if daily_pct >= DAILY_TARGET_PCT * 100:
             logger.info(f"Meta diaria del {DAILY_TARGET_PCT*100:.1f}% alcanzada. Sin nuevas operaciones.")
             await send_message(
@@ -258,10 +264,6 @@ async def main() -> None:
                 f"No se abrirán más posiciones hoy."
             )
             return
-
-    except Exception as e:
-        logger.error(f"Error consultando MetaAPI: {e}")
-        trading_enabled = False
 
     session = get_market_session()
     logger.info(f"Sesión de mercado actual: {session}")

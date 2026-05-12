@@ -56,7 +56,8 @@ def format_message(signal_data: dict) -> str:
     ]
 
     if reasoning:
-        lines.append(f"💬 {reasoning}")
+        safe_reasoning = reasoning.replace("_", " ").replace("*", "").replace("[", "").replace("`", "")
+        lines.append(f"💬 {safe_reasoning}")
 
     if patterns:
         pattern_display = ", ".join(p.replace("_", " ") for p in patterns)
